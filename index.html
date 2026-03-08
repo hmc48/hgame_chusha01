@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>hygiene measures</title>
+    <style>
+        body {
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            border: 2px solid #fff;
+            background-color: #000;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            width: 800px;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div id="score">Score: 0</div>
+        <div id="stage">Stage: 1</div> <div id="lives">Lives: 3</div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const stageElement = document.getElementById('stage'); // 要素取得を追加
+
+        // --- 画像の読み込み ---
+        const enemyImages = [];
+        for (let i = 1; i <= 5; i++) {
+            const img = new Image();
+            img.src = `enemy${i}.png`; 
+            enemyImages.push(img);
+        }
+        const playerImg = new Image();
+        playerImg.src = 'player.png';
+        const bulletImg = new Image();
+        bulletImg.src = 'bullet.png';
+        const enemyBulletImg = new Image();
+        enemyBulletImg.src = 'enemy_bullet.png';
+        
+        const ufoImg = new Image();
+        ufoImg.src = 'ufo.png'; 
+
+        const WHITE = "#FFFFFF";
+        const GREEN = "#4EFF57";
+
+        let score = 0;
+        let lives = 3;
+        let stage = 1; // ステージ管理変数を追加
+        let gameOver = false;
+        let enemies = [];
+        let bullets = [];
+        let enemyBullets = [];
+        let shields = []; 
+        let enemyDirection = 1;
+        let enemyMoveTimer = 0;
+        let enemyMoveInterval = 600; // 初期の敵移動速度
+
+        let ufo = {
+            x: -60,
+            y: 30,
+            width: 50,
+            height: 25,
+            speed: 3,
+            active: false
+        };
+
+        const player = {
+            x: 375,
+            y: 540,
+            width: 40,
+            height: 30,
+            speed: 5
+        };
+
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        function initEnemies() {
+            enemies = [];
+            for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 10; col++) {
+                    enemies.push({
+                        x: 157 + col * 50,
+                        y: 65 + row * 45,
+                        width: 35,
+                        height: 30,
+                        row: row,
+                        alive: true
+                    });
+                }
+            }
+        }
+
+        function initShields() {
+            shields = [];
+            const shieldCount = 4;
+            const shieldWidth = 70;
+            const gap = (canvas.width - (shieldCount * shieldWidth)) / (shieldCount + 1);
+
+            for (let i = 0; i < shieldCount; i++) {
+                let startX = gap + i * (shieldWidth + gap);
+                let startY = 450;
+                for (let row = 0; row < 5; row++) {
+                    for (let col = 0; col < 10; col++) {
+                        shields.push({
+                            x: startX + col * 7,
+                            y: startY + row * 7,
+                            width: 7,
+                            height: 7,
+                            alive: true
+                        });
+                    }
+                }
+            }
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            // プレイヤー移動
+            if (keys['ArrowLeft'] && player.x > 10) player.x -= player.speed;
+            if (keys['ArrowRight'] && player.x < canvas.width - player.width - 10) player.x += player.speed;
+
+            // 発射
+            if (keys['Space']) {
+                if (bullets.length === 0) {
+                    bullets.push({ x: player.x + player.width / 2 - 5, y: player.y, width: 10, height: 20, speed: 7 });
+                }
+            }
+
+            // UFOのロジック
+            if (!ufo.active && Math.random() < 0.002) {
+                ufo.active = true;
+                ufo.x = -ufo.width;
+            }
+            if (ufo.active) {
+                ufo.x += ufo.speed;
+                if (ufo.x > canvas.width) ufo.active = false;
+            }
+
+            // 自機の弾の更新
+            bullets.forEach((bullet, bIndex) => {
+                bullet.y -= bullet.speed;
+                if (bullet.y < 0) bullets.splice(bIndex, 1);
+
+                shields.forEach(s => {
+                    if (s.alive && 
+                        bullet.x < s.x + s.width && bullet.x + bullet.width > s.x &&
+                        bullet.y < s.y + s.height && bullet.y + bullet.height > s.y) {
+                        s.alive = false;
+                        bullets.splice(bIndex, 1);
+                    }
+                });
+
+                if (ufo.active && 
+                    bullet.x < ufo.x + ufo.width && bullet.x + bullet.width > ufo.x &&
+                    bullet.y < ufo.y + ufo.height && bullet.y + bullet.height > ufo.y) {
+                    ufo.active = false;
+                    bullets.splice(bIndex, 1);
+                    score += 150;
+                    scoreElement.innerText = `Score: ${score}`;
+                }
+
+                enemies.forEach((enemy) => {
+                    if (enemy.alive && 
+                        bullet.x < enemy.x + enemy.width && bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height && bullet.y + bullet.height > enemy.y) {
+                        enemy.alive = false;
+                        bullets.splice(bIndex, 1);
+                        score += (5 - enemy.row) * 10;
+                        scoreElement.innerText = `Score: ${score}`;
+                    }
+                });
+            });
+
+            // 敵の移動
+            let now = Date.now();
+            if (now - enemyMoveTimer > enemyMoveInterval) {
+                let hitEdge = false;
+                enemies.forEach(enemy => {
+                    if (!enemy.alive) return;
+                    enemy.x += 10 * enemyDirection;
+                    if (enemy.x > canvas.width - 40 || enemy.x < 10) hitEdge = true;
+                });
+
+                if (hitEdge) {
+                    enemyDirection *= -1;
+                    enemies.forEach(enemy => {
+                        enemy.y += 20;
+                        if (enemy.y > player.y - player.height) gameOver = true;
+                    });
+                }
+                enemyMoveTimer = now;
+            }
+
+            // 敵の弾発射
+            if (Math.random() < 0.02 && enemies.some(e => e.alive)) {
+                const aliveEnemies = enemies.filter(e => e.alive);
+                const shooter = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                enemyBullets.push({ x: shooter.x + shooter.width/2 - 4, y: shooter.y, width: 8, height: 16, speed: 4 });
+            }
+
+            // 敵の弾の更新
+            enemyBullets.forEach((eb, index) => {
+                eb.y += eb.speed;
+                if (eb.y > canvas.height) enemyBullets.splice(index, 1);
+
+                shields.forEach(s => {
+                    if (s.alive && 
+                        eb.x < s.x + s.width && eb.x + eb.width > s.x &&
+                        eb.y < s.y + s.height && eb.y + eb.height > s.y) {
+                        s.alive = false;
+                        enemyBullets.splice(index, 1);
+                    }
+                });
+
+                if (eb.x < player.x + player.width && eb.x + eb.width > player.x &&
+                    eb.y < player.y + player.height && eb.y + eb.height > player.y) {
+                    enemyBullets.splice(index, 1);
+                    lives--;
+                    livesElement.innerText = `Lives: ${lives}`;
+                    if (lives <= 0) gameOver = true;
+                }
+            });
+
+            // --- 敵全滅時の新ステージ処理 ---
+            const anyAlive = enemies.some(e => e.alive);
+            if (!anyAlive && enemies.length > 0) {
+                stage++; // ステージ数を増やす
+                stageElement.innerText = `Stage: ${stage}`; // UI更新
+                
+                initEnemies(); // 敵を再配置
+                
+                // 難易度アップ：移動間隔を短くする（最低100msまで）
+                enemyMoveInterval = Math.max(100, enemyMoveInterval - 50); 
+                
+                // 弾のリセット
+                bullets = [];
+                enemyBullets = [];
+                
+                // 任意：シールドを少し復活させるならここで initShields() を呼ぶ
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameOver) {
+                ctx.fillStyle = WHITE;
+                ctx.font = "50px Courier New";
+                ctx.fillText("GAME OVER", 250, 300);
+                ctx.font = "20px Courier New";
+                ctx.fillText("Press F5 to Restart", 280, 350);
+                return;
+            }
+
+            shields.forEach(s => {
+                if (s.alive) {
+                    ctx.fillStyle = GREEN;
+                    ctx.fillRect(s.x, s.y, s.width, s.height);
+                }
+            });
+
+            if (ufo.active) {
+                ctx.drawImage(ufoImg, ufo.x, ufo.y, ufo.width, ufo.height);
+            }
+
+            ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+
+            bullets.forEach(b => ctx.drawImage(bulletImg, b.x, b.y, b.width, b.height));
+            enemyBullets.forEach(eb => ctx.drawImage(enemyBulletImg, eb.x, eb.y, eb.width, eb.height));
+
+            enemies.forEach(enemy => {
+                if (enemy.alive) {
+                    const img = enemyImages[enemy.row];
+                    ctx.drawImage(img, enemy.x, enemy.y, enemy.width, enemy.height);
+                }
+            });
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        initEnemies();
+        initShields(); 
+        draw();
+    </script>
+</body>
+</html>
