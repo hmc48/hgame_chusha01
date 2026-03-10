@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>hygiene measures - Mobile Edition</title>
+    <title>hygiene measures - Smartphone Fix</title>
     <style>
-        /* 全体の背景をベージュに設定 */
+        /* デザイン設定：ベージュとシンプルの融合 */
         body {
             background-color: #f5f5dc; 
             color: #333;
@@ -19,7 +19,6 @@
             touch-action: manipulation;
         }
 
-        /* スコアなどのUI表示エリア */
         #ui {
             width: 100%;
             max-width: 800px;
@@ -28,19 +27,18 @@
             padding: 10px 0;
             font-size: 18px;
             font-weight: bold;
-            border-bottom: 1px solid #dcdcdc; /* ベージュに馴染む境界線 */
+            border-bottom: 1px solid #dcdcdc;
         }
 
-        /* ゲーム画面（キャンバス） */
         canvas {
             border: 1px solid #ccc;
-            background-color: #fdf5e6; /* 少し明るいベージュで視認性を確保 */
+            background-color: #fdf5e6; 
             max-width: 100%;
             height: auto;
             display: block;
+            touch-action: none; /* ブラウザのデフォルト動作を無効化 */
         }
 
-        /* iPhone用タッチ操作ボタンのデザイン */
         #controls {
             display: flex;
             width: 100%;
@@ -51,8 +49,8 @@
         }
 
         .btn {
-            width: 70px;
-            height: 70px;
+            width: 75px;
+            height: 75px;
             background-color: rgba(0, 0, 0, 0.05);
             border: 2px solid #ccc;
             border-radius: 50%;
@@ -69,8 +67,8 @@
         }
 
         #shoot-btn {
-            width: 90px;
-            height: 90px;
+            width: 100px;
+            height: 100px;
             background-color: rgba(0, 0, 0, 0.08);
             border-radius: 12px;
             font-weight: bold;
@@ -102,7 +100,7 @@
         const livesElement = document.getElementById('lives');
         const stageElement = document.getElementById('stage');
 
-        // --- 画像資産の定義 ---
+        // 画像の読み込み
         const enemyImages = [];
         for (let i = 1; i <= 5; i++) {
             const img = new Image();
@@ -114,35 +112,66 @@
         const enemyBulletImg = new Image(); enemyBulletImg.src = 'enemy_bullet.png';
         const ufoImg = new Image(); ufoImg.src = 'ufo.png'; 
 
-        // 配色の定義（シックな色合い）
-        const BLACK = "#333333";
-        const SHIELD_COLOR = "#8b4513"; // ベージュに合う茶系のシールド
+        const TEXT_COLOR = "#333333";
+        const SHIELD_COLOR = "#8b4513"; 
 
-        // ゲーム状態の管理
-        let score = 0, lives = 3, stage = 1, gameOver = false;
-        let enemies = [], bullets = [], enemyBullets = [], shields = [];
-        let enemyDirection = 1, enemyMoveTimer = 0, enemyMoveInterval = 600;
+        // ゲーム変数の管理
+        let score, lives, stage, gameOver, animationId;
+        let enemies, bullets, enemyBullets, shields;
+        let enemyDirection, enemyMoveTimer, enemyMoveInterval;
+        let ufo, player;
 
-        let ufo = { x: -60, y: 30, width: 50, height: 25, speed: 3, active: false };
-        const player = { x: 375, y: 540, width: 40, height: 30, speed: 5 };
-
-        // 入力制御（キーボード + タッチ）
         const keys = {};
         const touchInputs = { left: false, right: false, shoot: false };
 
+        // ゲームの初期化（リスタート対応）
+        function resetGame(fullReset = true) {
+            if (fullReset) {
+                score = 0;
+                lives = 3;
+                stage = 1;
+                enemyMoveInterval = 600;
+            }
+            gameOver = false;
+            bullets = [];
+            enemyBullets = [];
+            enemyDirection = 1;
+            enemyMoveTimer = Date.now();
+            
+            ufo = { x: -60, y: 30, width: 50, height: 25, speed: 3, active: false };
+            player = { x: 375, y: 540, width: 40, height: 30, speed: 5 };
+
+            scoreElement.innerText = `Score: ${score}`;
+            livesElement.innerText = `Lives: ${lives}`;
+            stageElement.innerText = `Stage: ${stage}`;
+
+            initEnemies();
+            initShields();
+            
+            if (animationId) cancelAnimationFrame(animationId);
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 入力設定
         window.addEventListener('keydown', e => keys[e.code] = true);
         window.addEventListener('keyup', e => keys[e.code] = false);
 
         const setupBtn = (id, key) => {
             const btn = document.getElementById(id);
-            btn.addEventListener('touchstart', (e) => { e.preventDefault(); touchInputs[key] = true; });
-            btn.addEventListener('touchend', (e) => { e.preventDefault(); touchInputs[key] = false; });
-            btn.addEventListener('mousedown', (e) => { touchInputs[key] = true; });
-            btn.addEventListener('mouseup', (e) => { touchInputs[key] = false; });
+            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); touchInputs[key] = true; });
+            btn.addEventListener('pointerup', (e) => { e.preventDefault(); touchInputs[key] = false; });
+            btn.addEventListener('pointerleave', (e) => { touchInputs[key] = false; });
         };
         setupBtn('left-btn', 'left');
         setupBtn('right-btn', 'right');
         setupBtn('shoot-btn', 'shoot');
+
+        // スマホ用：ゲームオーバー時に画面をタップしてリスタート
+        window.addEventListener('pointerdown', (e) => {
+            if (gameOver) {
+                resetGame(true);
+            }
+        });
 
         function initEnemies() {
             enemies = [];
@@ -170,20 +199,20 @@
         function update() {
             if (gameOver) return;
 
-            // 自機の移動
+            // 移動
             if ((keys['ArrowLeft'] || touchInputs.left) && player.x > 10) player.x -= player.speed;
             if ((keys['ArrowRight'] || touchInputs.right) && player.x < canvas.width - player.width - 10) player.x += player.speed;
 
-            // 弾の発射（1発のみ制限）
+            // 発射
             if ((keys['Space'] || touchInputs.shoot) && bullets.length === 0) {
                 bullets.push({ x: player.x + player.width / 2 - 5, y: player.y, width: 10, height: 20, speed: 7 });
             }
 
-            // UFO出現ロジック
+            // UFO
             if (!ufo.active && Math.random() < 0.002) { ufo.active = true; ufo.x = -ufo.width; }
             if (ufo.active) { ufo.x += ufo.speed; if (ufo.x > canvas.width) ufo.active = false; }
 
-            // 自機の弾更新
+            // 自弾
             bullets.forEach((bullet, bIndex) => {
                 bullet.y -= bullet.speed;
                 if (bullet.y < 0) bullets.splice(bIndex, 1);
@@ -205,7 +234,7 @@
                 });
             });
 
-            // 敵の移動ロジック
+            // 敵の移動
             let now = Date.now();
             if (now - enemyMoveTimer > enemyMoveInterval) {
                 let hitEdge = false;
@@ -224,37 +253,32 @@
                 enemyMoveTimer = now;
             }
 
-            // 敵の攻撃
+            // 敵の弾
             if (Math.random() < 0.02 && enemies.some(e => e.alive)) {
                 const aliveEnemies = enemies.filter(e => e.alive);
                 const shooter = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
                 enemyBullets.push({ x: shooter.x + shooter.width/2 - 4, y: shooter.y, width: 8, height: 16, speed: 4 });
             }
 
-            // 敵の弾更新
             enemyBullets.forEach((eb, index) => {
                 eb.y += eb.speed;
                 if (eb.y > canvas.height) enemyBullets.splice(index, 1);
-
                 shields.forEach(s => {
                     if (s.alive && eb.x < s.x + s.width && eb.x + eb.width > s.x && eb.y < s.y + s.height && eb.y + eb.height > s.y) {
                         s.alive = false; enemyBullets.splice(index, 1);
                     }
                 });
-
                 if (eb.x < player.x + player.width && eb.x + eb.width > player.x && eb.y < player.y + player.height && eb.y + eb.height > player.y) {
                     enemyBullets.splice(index, 1); lives--; livesElement.innerText = `Lives: ${lives}`;
                     if (lives <= 0) gameOver = true;
                 }
             });
 
-            // ステージクリア判定
-            const anyAlive = enemies.some(e => e.alive);
-            if (!anyAlive && enemies.length > 0) {
-                stage++; stageElement.innerText = `Stage: ${stage}`;
-                initEnemies();
-                enemyMoveInterval = Math.max(100, enemyMoveInterval - 50); // 徐々に速く
-                bullets = []; enemyBullets = [];
+            // クリア判定
+            if (!enemies.some(e => e.alive) && enemies.length > 0) {
+                stage++;
+                enemyMoveInterval = Math.max(100, enemyMoveInterval - 50);
+                resetGame(false);
             }
         }
 
@@ -262,37 +286,37 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             if (gameOver) {
-                ctx.fillStyle = BLACK;
+                ctx.fillStyle = TEXT_COLOR;
                 ctx.font = "bold 40px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("GAME OVER", canvas.width/2, 280);
-                ctx.font = "20px sans-serif";
-                ctx.fillText("Reload to Restart", canvas.width/2, 330);
+                ctx.fillText("GAME OVER", canvas.width / 2, 280);
+                ctx.font = "24px sans-serif";
+                ctx.fillText("Tap Screen to Restart", canvas.width / 2, 340);
                 return;
             }
 
-            // シールド描画
             shields.forEach(s => { if (s.alive) { ctx.fillStyle = SHIELD_COLOR; ctx.fillRect(s.x, s.y, s.width, s.height); } });
-
-            // 各種エンティティ描画
             if (ufo.active) ctx.drawImage(ufoImg, ufo.x, ufo.y, ufo.width, ufo.height);
             ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
             bullets.forEach(b => ctx.drawImage(bulletImg, b.x, b.y, b.width, b.height));
             enemyBullets.forEach(eb => ctx.drawImage(enemyBulletImg, eb.x, eb.y, eb.width, eb.height));
-
             enemies.forEach(enemy => {
-                if (enemy.alive) {
-                    const img = enemyImages[enemy.row];
-                    ctx.drawImage(img, enemy.x, enemy.y, enemy.width, enemy.height);
-                }
+                if (enemy.alive) ctx.drawImage(enemyImages[enemy.row], enemy.x, enemy.y, enemy.width, enemy.height);
             });
-
-            requestAnimationFrame(() => { update(); draw(); });
         }
 
-        initEnemies();
-        initShields(); 
-        draw();
+        function gameLoop() {
+            update();
+            draw();
+            if (!gameOver) {
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // 初期ロード完了後に実行
+        window.onload = () => {
+            resetGame(true);
+        };
     </script>
 </body>
 </html>
